@@ -1,0 +1,3 @@
+pytest>=8
+# For Jev and LLM routers:
+# pydantic-ai-slim[typesafe,anthropic]
