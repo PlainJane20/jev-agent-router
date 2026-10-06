@@ -66,7 +66,8 @@ def print_report(name: str, s: dict) -> None:
     for k, v in s["per_kind"].items():
         print(f"    {k:<20}{_fmt(*v)}")
     print("  confusion (rows = true team, columns = predicted; all runs, incl. ambiguous):")
-    print("    " + f"{'true \\ pred':<12}" + "".join(f"{t:>9}" for t in TEAMS))
+    header = "true \\ pred"
+    print("    " + f"{header:<12}" + "".join(f"{t:>9}" for t in TEAMS))
     for true in TEAMS:
         print("    " + f"{true:<12}" + "".join(f"{s['confusion'][(true, p)]:>9}" for p in TEAMS))
     print()
