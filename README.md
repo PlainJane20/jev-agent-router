@@ -39,7 +39,7 @@ losing accuracy. I wanted that comparison measured before building anything on t
 |---|---|
 | **Problem** | Does a decision-only model route as accurately as an LLM, and how much faster is it? |
 | **Approach** | Three routers behind one typed interface, one labeled dataset, p50 and p95 latency |
-| **Proof so far** | Jev 100% on the original 16 messages (DATA_V1, 3 runs); keyword baseline 81% on those 16 and 42% on the harder 120-message set; Jev and the LLM have **not** been run on the 120 set |
+| **Proof so far** | On 111 hard messages (3 runs): keywords 42%, Jev 98% at 116 ms median, Claude Haiku 99% at 607 ms median. Accuracy of the two models is within noise; Jev is about 5x faster. Cost not measured |
 | **Output** | An accuracy and latency table per router |
 
 ## Competencies demonstrated
@@ -63,53 +63,78 @@ now kept as `DATA_V1`.
 |---|---|---|---|---|
 | keywords | 81% (13 of 16) | under 0.1 ms | under 0.1 ms | measured |
 | jev | **100% (16 of 16), all 3 runs** | 109 to 113 ms | 172 to 254 ms | measured |
-| llm-haiku | n/a | n/a | n/a | not run (needs `ANTHROPIC_API_KEY`) |
+| llm-haiku | n/a | n/a | n/a | not run on this set; see the 120-message results below |
 
-**The 100% figure applies only to DATA_V1.** Jev and the LLM have **not** been run on
-the 120-message set. No model result exists for the 104 newer messages.
+**The 100% figure applies only to DATA_V1**, which is mostly easy messages. The harder
+120-message set is below.
 
-### Keyword baseline on the 120-message set (DATA)
+### All three routers on the 120-message set (DATA)
 
-Run offline with `python -m router.benchmark` (no API keys, one run; the baseline is
-deterministic). 120 messages, 30 per team, 9 flagged ambiguous and reported separately.
+Run on 2026-10-05 from an Apple M4 Pro with `python -m router.benchmark --repeat 3`.
+Jev: `typesafe:jev-latest`. LLM: `claude-haiku-4-5-20251001`. Both through Pydantic AI
+with the same one-line instruction and the same typed `Route` output. Requests were
+sequential over the public internet, so latency includes the network. 120 messages,
+30 per team; 9 are flagged ambiguous and reported separately.
 
-| Slice | Accuracy |
-|---|---|
-| Headline (excludes 9 ambiguous) | **42% (47 of 111)** |
-| Full set (includes ambiguous) | 40% (48 of 120) |
-| Ambiguous only | 11% (1 of 9) |
-
-By kind (headline set):
-
-| Kind | Accuracy |
-|---|---|
-| easy (contains the team's own keyword) | 100% (28 of 28) |
-| no-keyword | 29% (9 of 31) |
-| misleading-keyword | 0% (0 of 14) |
-| multi-intent | 25% (4 of 16) |
-| terse | 27% (3 of 11) |
-| noisy | 27% (3 of 11) |
-
-Confusion (rows are the true team, columns the prediction):
-
-| true \ predicted | billing | bug | account | sales |
+| Router | Headline accuracy (111 messages) | Per run | p50 | p95 |
 |---|---|---|---|---|
-| billing | 8 | 19 | 1 | 2 |
-| bug | 1 | 26 | 1 | 2 |
-| account | 1 | 21 | 6 | 2 |
-| sales | 3 | 18 | 1 | 8 |
+| keywords | 42% (141 of 333) | 47, 47, 47 of 111 | under 0.1 ms | under 0.1 ms |
+| **jev** | **98% (327 of 333)** | 109, 109, 109 of 111 | **116 ms** | **170 ms** |
+| **llm-haiku** | **99% (329 of 333)** | 110, 110, 109 of 111 | **607 ms** | **804 ms** |
 
-Most misses are messages with no keyword falling through to the default `bug` route
-(bug recall looks high only because `bug` is the default).
+| Slice | keywords | jev | llm-haiku |
+|---|---|---|---|
+| easy | 100% | 100% | 100% |
+| no-keyword | 29% | 97% | 100% |
+| misleading-keyword | 0% | 93% | 95% |
+| multi-intent | 25% | 100% | 100% |
+| terse | 27% | 100% | 94% |
+| noisy | 27% | 100% | 100% |
+| ambiguous only (27 predictions) | 11% | 44% | 59% |
+| full set incl. ambiguous | 40% | 94% | 96% |
 
-**How to read this:** the new messages were written to be hard for keyword matching,
-so 0% on misleading-keyword is by construction, and the 42% says how adversarial the
-set is more than how good any real router is. The same person wrote both the baseline
-and the data (see [METHODOLOGY](docs/METHODOLOGY.md)). There is still no Jev-vs-LLM
-comparison and none should be quoted until both are run on the 120 set, several times.
+**What this shows:**
+- Both models are far ahead of the keyword baseline, including on messages written to defeat it.
+- Jev and Haiku are indistinguishable on accuracy here. The gap is two messages out of 111,
+  and the three "runs" are repeats of the same 111 messages, not 333 independent samples.
+- Jev's median latency is about 5 times lower (116 ms vs 607 ms), and its p95 is about 5 times lower.
+- On ambiguous messages Haiku agrees with my labels more often (59% vs 44%), but those labels
+  are arguable, so this says little.
+
+**What it does not show:**
+- **Cost.** Not measured. I did not compute per-call cost for either model.
+- **Real-world accuracy.** I wrote the data (and the baseline), and the kind mix is not
+  real ticket traffic. Labels are one person's judgment with no second annotator.
+- **Concurrency, tail latency, or other days.** One machine, one afternoon, sequential calls.
+- **Whether Haiku's latency is typical.** A different prompt, region or batching would change it.
+
+Jev's errors on the headline set were two messages labeled `sales` that it routed to
+`account`: "We'd like to extend our pilot to two more departments. Who should we talk to?"
+and "We want to buy, but the evaluation account we created is locked until we talk to
+someone. Can a rep call us?" The second arguably is an account issue.
+
+Confusion matrices (rows are the true team, columns the prediction, all runs, ambiguous included):
+
+| jev: true \ predicted | billing | bug | account | sales |
+|---|---|---|---|---|
+| billing | 87 | 3 | 0 | 0 |
+| bug | 0 | 90 | 0 | 0 |
+| account | 0 | 3 | 87 | 0 |
+| sales | 9 | 0 | 6 | 75 |
+
+| llm-haiku: true \ predicted | billing | bug | account | sales |
+|---|---|---|---|---|
+| billing | 90 | 0 | 0 | 0 |
+| bug | 2 | 88 | 0 | 0 |
+| account | 3 | 0 | 87 | 0 |
+| sales | 8 | 0 | 2 | 80 |
+
+Most keyword-baseline misses are messages with no keyword falling through to the default
+`bug` route, so its bug recall looks high only because `bug` is the default.
 
 Jev also returns calibrated probabilities. For "I was charged twice for my subscription
 this month" it returned `billing` with probability 1.0 and `confidence: {"response": 1.0}`.
+Using that confidence to escalate unsure messages to the LLM has not been tested here.
 
 ## Real findings from building this
 
@@ -119,7 +144,15 @@ this month" it returned `billing` with probability 1.0 and `confidence: {"respon
    page says $79?" (billing) and "How do I add a second admin to our workspace?"
    (account). A silent default hides failures; a router that can say "no match" is
    better, which is the idea behind confidence-based escalation.
-2. **Output format is controlled so accuracy is comparable.** Every router
+2. **The original 16 messages overstated Jev, and the harder set is what separates the routers.**
+   Jev scored 100% on the 16 easy-ish messages. On the 120-message set it scores 98%,
+   and the keyword baseline falls from 81% to 42%. The easy set could not tell a
+   good router from a mediocre one; the hard set does.
+3. **Jev matches a small LLM on accuracy here at about a fifth of the latency.**
+   98% vs 99% is two messages out of 111, which is within noise on this dataset.
+   The latency gap (116 ms vs 607 ms median) is large and consistent across runs.
+   Whether that holds on real traffic, and what it costs, is not known yet.
+4. **Output format is controlled so accuracy is comparable.** Every router
    returns the same `Route` enum, so a wrong answer is a wrong team and not a parsing failure.
 
 ## Architecture
@@ -159,11 +192,13 @@ python -m router.benchmark
 
 ## What I'd add next
 
-- [x] Grow the dataset to 100 or more (done: 120, with ids, kinds and an ambiguous list; Jev and the LLM still need to be run on it)
-- [ ] Run Jev on the 120-message set, several times
-- [x] Run Jev several times (done: 3 runs)
-- [ ] Run the LLM router several times and record model versions
+- [x] Grow the dataset to 100 or more (done: 120, with ids, kinds and an ambiguous list)
+- [x] Run Jev on the 120-message set, several times (done: 3 runs)
+- [x] Run the LLM router several times (done: 3 runs, `claude-haiku-4-5-20251001`)
 - [ ] Add a cost column from published per-token prices
+- [ ] Get a second annotator for the labels and the ambiguous list
+- [ ] Add messages written by someone other than the baseline's author, or real (anonymized) tickets
+- [ ] Measure concurrent and repeated-day latency
 - [x] Verify how Jev returns confidence (a dict like `{"response": 1.0}` plus per-class probabilities)
 - [ ] Test escalating low-confidence messages to the LLM
 - [ ] Contribute a Jev backend to `switchboard`
