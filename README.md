@@ -39,7 +39,7 @@ losing accuracy. I wanted that comparison measured before building anything on t
 |---|---|
 | **Problem** | Does a decision-only model route as accurately as an LLM, and how much faster is it? |
 | **Approach** | Three routers behind one typed interface, one labeled dataset, p50 and p95 latency |
-| **Proof so far** | The keyword baseline runs and is tested; model routers are wired but **not yet run** |
+| **Proof so far** | Keyword baseline 81%; Jev 100% on 16 examples across 3 runs; the LLM router is wired but **not yet run** |
 | **Output** | An accuracy and latency table per router |
 
 ## Competencies demonstrated
@@ -52,18 +52,27 @@ losing accuracy. I wanted that comparison measured before building anything on t
 
 ## Results
 
-Run on 2026-10-05 on an Apple M4 Pro. Only the baseline had credentials-free access.
+Run on 2026-10-05 from an Apple M4 Pro, three consecutive runs per router. Jev was
+called through `typesafe:jev-latest` over the public internet, one request at a time,
+so its latency includes the network round trip.
 
 | Router | Accuracy | p50 | p95 | Status |
 |---|---|---|---|---|
 | keywords | 81% (13 of 16) | under 0.1 ms | under 0.1 ms | measured |
-| jev | n/a | n/a | n/a | not run (needs `TYPESAFE_API_KEY`) |
+| jev | **100% (16 of 16), all 3 runs** | 109 to 113 ms | 172 to 254 ms | measured |
 | llm-haiku | n/a | n/a | n/a | not run (needs `ANTHROPIC_API_KEY`) |
 
-**These numbers say very little yet.** The dataset has 16 messages, written by
-the same person who wrote the keyword rules, so the baseline's score is
-optimistic. Do not quote any comparison until the dataset reaches 100 or more
-examples and the model routers have been run several times.
+**How much this says:** not much about the comparison that matters. The dataset has
+16 messages, written by the same person who wrote the keyword rules, and they are
+fairly easy. A 100% score on 16 easy examples does not show Jev would match an LLM on
+messy real tickets. The LLM row is empty, so there is no Jev-vs-LLM comparison yet.
+Do not quote one until the dataset reaches 100 or more examples and the LLM has been run.
+
+What the runs do show: Jev follows a plain-language routing instruction, returned the
+correct typed route on every message the baseline missed, and was stable across three runs.
+
+Jev also returns calibrated probabilities. For "I was charged twice for my subscription
+this month" it returned `billing` with probability 1.0 and `confidence: {"response": 1.0}`.
 
 ## Real findings from building this
 
@@ -112,9 +121,11 @@ python -m router.benchmark
 ## What I'd add next
 
 - [ ] Grow the dataset to 100 or more, including messages the baseline wasn't tuned on
-- [ ] Run Jev and the LLM, several times each, and record model versions
+- [x] Run Jev several times (done: 3 runs)
+- [ ] Run the LLM router several times and record model versions
 - [ ] Add a cost column from published per-token prices
-- [ ] Verify how Jev returns confidence, then test escalating low-confidence messages to the LLM
+- [x] Verify how Jev returns confidence (a dict like `{"response": 1.0}` plus per-class probabilities)
+- [ ] Test escalating low-confidence messages to the LLM
 - [ ] Contribute a Jev backend to `switchboard`
 
 ## Repository map
